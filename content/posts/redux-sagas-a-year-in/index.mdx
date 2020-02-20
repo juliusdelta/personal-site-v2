@@ -14,78 +14,56 @@ when it comes to side effects for various state changes and good patterns with t
 ### Overview
 It's been about a year and half since we began rewriting our main frontend application from Backbone.js to React. Pretty straight away we decided to use redux-sagas
 for our redux middleware. There's plenty of reasons why applications wouldn't need such powerful tooling for state management but state management seems to have hit
-new levels of complexity in that, state management isn't necesarily about state anymore, but a small (rather dumb) data store. Given that keep our side effects manageable as the 
+new levels of complexity in that, state management isn't necesarily about state anymore, but a small (rather dumb) data store. Given that keeping our side effects manageable as the 
 code base grows is a huge concern for us.
 
-### Patterns to Avoid
-There's a few things we've managed to learn the hard way. We're constantly experimenting with different patterns and ways to use the various libraries we have and we typically
-discover that at our level of scale there's things to do and alot more things not to do.
+### Best practices we've found
+There are a few things to avoid and some things we found really valuable in using sagas. These aren't meant to be anecdotally perscriptive, but rather pieces of encouragement to be intentional about
+how you write your side effects and what they can control
 
 #### Don't Use Sagas for Component Interfaces
 This may seem like an obvious point but it's important to recognize nonetheless as it's easy to begin to rely on Sagas for this type of behavior. It's important to understand
 the flow of the UI and what side effects need to happen. Whenever you work on a saga first ask the question, "Is this a UI side effect? Or a UI linear path?"
 
-##### Example
-Lets say you have a `<Drawer />` component that needs to open and close. This sounds simple enough, but when you have dynamic content inside of that drawer things can get hairy.
-You could fire a redux action with a `content.id` in the payload and then use a side effect to select the `content` from an array of `contents` via the `id` and then dispatch an
-action that results in the changes of the drawer state. The result of this implementation is that your previously linear (or syncronous) user flow has now needlessly turned
-asynchronous and there are more points of failure across the whole implementation.
+#### Watchers & Workers
+A common pattern among sagas is to use the watcher/worker pattern. This is great because you know exactly what is listening for what change and makes your code a lot easier to understand for someone
+new coming into the mix.
 
-A wiser use of Sagas in the UI is for something like a toast. 
-
-
-We follow two main patterns: the Listener/Worker Saga pattern (recommended by redux-saga) & the Request, Success, & Failure pattern. Here's an example of the two.
-
-**Listener/Worker Saga pattern**
-This is pretty straight forward. One saga gets generated to listen for actions to be dispatched, and then fires off another saga to do the work to finish the side effect loop.
-```js:title=sagas.js
-import { call, takeLatest, put } from 'redux-saga/effects';
-
-export function* actionsListRequest({ id }) { // worker saga
+```js:title=ex-1
+export function* attemptCreateAction(action) {
   try {
-    const list = yield call(actionsListService.fetchActionsList, { id });
-    yield put(fetchActionsListSuccess(list));
-  } catch (error) {
-    yield put(fetchActionsListFailure(error));
+    const response = yield call(actionsListService.createAction, action.params);
+    const prevPoints = yield select(state => state.player.points);
+    yield put(createActionSuccess({ ...response, prevPoints }));
+    yield put(propertyRecentActivityRequest());
+    yield put(propertyLeaderboardRequest());
+    if (action.params.rsvp) {
+      yield put(showFeedbackBanner({ message: 'Response recorded.' }));
+    }
+  } catch (e) {
+    yield put(showFeedbackBanner({ message: e.error, variant: 'alert' }));
+    yield put(createActionFailure(e));
   }
 }
 
-export function* watchRequestActionsList() { // listener saga
-  yield takeLatest(ACTIONS_LIST_REQUEST, actionsListRequest);
+export function* watchCreateActionRequest() {
+  yield takeLatest(CREATE_ACTION_REQUEST, attemptCreateAction);
 }
 ```
 
-**Request, Success, Failure**
-This is a redux pattern overall but works well given the same example above. Skipping reducer here. This is a great pattern cause Api request are completely explicit and we can track downt the failure in a really straight forward way. We can also test these sagas to ensure
-that the flow is consistent and correct.
-```js:title=actions.js
-const ACTIONS_LIST_REQUEST = 'ACTIONS_LIST_REQUEST';
-const ACTIONS_LIST_SUCCESS = 'ACTIONS_LIST_SUCCESS';
-const ACTIONS_LIST_FAILURE = 'ACTIONS_LIST_FAILURE';
+As you can see, it's clearly define what generator function is doing what, one is watching then handing off the work to be done to the worker function. There's an anti-pattern in here which optionally puts a sperate UI side effect and we'll talk about that next.
 
-export const fetchActionsListRequest = () => action(ACTIONS_LIST_REQUEST, { id });
-export const fetchActionsListSuccess = list => action(ACTIONS_LIST_SUCCESS, { list });
-export const fetchActionsListFailure = error => action(ACTIONS_LIST_FAILURE, { error });
-```
-```js:title=sagas.js
-import { call, takeLatest, put } from 'redux-saga/effects';
+#### Side Effects in Side Effects
+In `ex-1` you can see that depending on the action type we're dispatching another action which causes a UI update. I haven't really figured out why I personally don't like this other than I just don't. I think this stems from an issue
+withour underlying architecture and model/domain structure. Avoid these types of conditionals if you can, they tend to make a saga less clear and if something isn't written right, unintentional effects can happen. These are also hard to test
+in isolation.
 
-export function* actionsListRequest({ id }) {
-  try {
-    const list = yield call(actionsListService.fetchActionsList, { id });
-    yield put(fetchActionsListSuccess(list));
-  } catch (error) {
-    yield put(fetchActionsListFailure(error));
-  }
-}
+#### Integration Testing > Unit Testing for Sagas
+We've been using [redux-saga-test-plan](https://github.com/jfairbank/redux-saga-test-plan) as our library of choice for testing. This allows us to test the entire grouping of behavior from the
+actions to the reducers and all the saga based side effects. This is a wonderful way to test these. The initial learning curve is quite high if you've never used redux-sagas before, but it's definitely
+worth it for piece of mind as you make changes to your application.
 
-export function* watchRequestActionsList() {
-  yield takeLatest(ACTIONS_LIST_REQUEST, actionsListRequest);
-}
-```
+### Conclusion
 
-### The Benefits
-
-This pattern made us always have a defined structure for how to deal with
-external data, it also gave us a clearly defined scope of where a problem could
-lie in the chain. 
+No matter what your opinions are it's important to be intentional about things. These practices work for us because of the structure of our domains but they aren't for every application. I'm also well
+aware the Redux team discourages the use of redux-sagas but we've been burned by side-effect heavy code before and we want to ensure we take every precaution to keep things as maintainable as possible.
