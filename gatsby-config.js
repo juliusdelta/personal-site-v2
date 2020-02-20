@@ -4,7 +4,8 @@ require(`dotenv`).config({
 
 module.exports = {
   siteMetadata: {
-    siteTitleAlt: `Minimal Blog - Gatsby Theme`,
+    siteTitle: `jds work`,
+    siteTitleAlt: `A blog about developing software.`,
     navigation: [
       {
         title: `Blog`,
@@ -14,7 +15,25 @@ module.exports = {
         title: `About`,
         slug: `/about`,
       },
+      {
+        title: `Reading List`,
+        slug: `/reading-list`,
+      },
     ],
+    externalLinks: [
+      {
+        name: "Instagram",
+        url: "https://instagram.com/juliusdelta"
+      },
+      {
+        name: "Twitter",
+        url: "https://twitter.com/juliusdelta"
+      },
+      {
+        name: "Github",
+        url: "https://github.com/juliusdelta"
+      }
+    ]
   },
   plugins: [
     {
