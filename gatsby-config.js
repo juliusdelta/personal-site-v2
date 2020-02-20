@@ -4,6 +4,8 @@ require(`dotenv`).config({
 
 module.exports = {
   siteMetadata: {
+    title: `jds work`,
+    siteUrl: `https://jds.work`,
     siteTitle: `jds work`,
     siteTitleAlt: `A blog about developing software and other things.`,
     navigation: [
